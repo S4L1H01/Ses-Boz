@@ -454,12 +454,16 @@
                 <div class="wardrobe-title">Efekt</div>
                 <div class="acc-option" onclick="setAcc('mus','🔥')">🔥</div>
                 <div class="acc-option" onclick="setAcc('mus','✨')">✨</div>
-                <div class="acc-option" onclick="setAcc('mus','〰️')">〰️</div>
                 <div class="acc-option" onclick="setAcc('mus','⚡')">⚡</div>
                 <div class="acc-option" onclick="setAcc('mus','🌀')">🌀</div>
                 <div class="acc-option" onclick="setAcc('mus','💎')">💎</div>
                 <div class="acc-option" onclick="setAcc('mus','🎵')">🎵</div>
                 <div class="acc-option" onclick="setAcc('mus','🌈')">🌈</div>
+                <div class="acc-option" onclick="setAcc('mus','🍄')">🍄</div>
+                <div class="acc-option" onclick="setAcc('mus','🫧')">🫧</div>
+                <div class="acc-option" onclick="setAcc('mus','🪩')">🪩</div>
+                <div class="acc-option" onclick="setAcc('mus','❄️')">❄️</div>
+                <div class="acc-option" onclick="setAcc('mus','🎸')">🎸</div>
                 <div class="acc-option" onclick="setAcc('mus','')">❌</div>
                 <div class="wardrobe-title">Renk</div>
                 <div class="acc-option" onclick="setBubbleColor('#FF4757')">🔴</div>
@@ -976,7 +980,7 @@ async function playAudioWithEffects(base64, level, isPreview) {
     // Hız: zorluk arttıkça hızlandırma büyür (1.4→3x), yavaşlatma azalır (0.8→0.2x)
     // tek turlar hızlanır, çift turlar yavaşlar
     // level 0→1, level 1→1.4, level 2→0.8, level 3→1.9, level 4→0.55, level 5→2.5, level 6→0.3, level 7→3.0, level 8→0.2
-    const speedMap = [1, 1.4, 0.8, 1.9, 0.55, 2.5, 0.3, 3.0, 0.2];
+    const speedMap = [1, 1.2, 0.82, 1.4, 0.68, 1.6, 0.58, 1.8, 0.5];
     source.playbackRate.value = speedMap[Math.min(level, speedMap.length - 1)];
 
     // Ses seviyesi sabit
