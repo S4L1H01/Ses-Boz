@@ -815,74 +815,26 @@ async function playAudioWithEffects(base64, level, isPreview) {
     const source = audioContext.createBufferSource();
     source.buffer = decoded;
 
-    // Perde: yavaş ve nazik kayma — tur başına sadece 80 cent
-    // level 1→ ince, level 2→ kalın, level 3→ biraz ince... gibi dalgalı ama makul
-    const pitchShift = (level % 2 === 0 ? 1 : -1) * level * 80;
-    source.detune.value = pitchShift;
+    // SADECE perde: tur 1→ ince (+200 cent), tur 2→ kalın (-200 cent), tur 3→ daha ince (+400)...
+    // Her geçişte 200 cent artarak ince↔kalın arasında gidip gelir
+    const direction = (level % 2 === 0) ? 1 : -1;
+    const amount = Math.ceil(level / 2) * 200; // 0, 200, 200, 400, 400, 600...
+    source.detune.value = direction * amount;
 
-    // Hız: çok az değişiyor — daha doğal
-    // level 0→normal, 1→%10 hızlı, 2→%15 yavaş, 3→%20 hızlı, 4→%25 yavaş...
-    const speedMap = [1, 1.10, 0.85, 1.20, 0.80, 1.30, 0.75];
-    source.playbackRate.value = speedMap[Math.min(level, speedMap.length-1)];
+    // Hız DEĞİŞMİYOR — sadece perde
+    source.playbackRate.value = 1;
 
-    // Gain: ses seviyesini sabit tut, gürültü olmasın
+    // Ses seviyesi sabit
     const gainNode = audioContext.createGain();
     gainNode.gain.value = 0.9;
     source.connect(gainNode);
-    let lastNode = gainNode;
-
-    // Reverb: sadece level 4'ten sonra, hafif
-    if(level >= 4) {
-        const convolver = audioContext.createConvolver();
-        // Kısa ve hafif reverb (1 saniye, düşük decay)
-        convolver.buffer = makeImpulseResponse(audioContext, 1.0, 3, false);
-        const dryGain = audioContext.createGain();
-        const wetGain = audioContext.createGain();
-        dryGain.gain.value = 0.75;
-        wetGain.gain.value = 0.25; // reverb çok baskın olmasın
-        lastNode.connect(dryGain);
-        lastNode.connect(convolver);
-        convolver.connect(wetGain);
-        const merger = audioContext.createGain();
-        dryGain.connect(merger);
-        wetGain.connect(merger);
-        lastNode = merger;
-    }
-
-    // Robot efekti: level 6'dan sonra, hafif ring mod
-    if(level >= 6) {
-        const oscillator = audioContext.createOscillator();
-        oscillator.frequency.value = 60;
-        oscillator.type = 'sine';
-        const ringGain = audioContext.createGain();
-        ringGain.gain.value = 0.5;
-        oscillator.connect(ringGain);
-        lastNode.connect(ringGain);
-        oscillator.start();
-        lastNode = ringGain;
-    }
-
-    // Distortion yok — gürültüyü kaldırdık
-
-    lastNode.connect(audioContext.destination);
+    gainNode.connect(audioContext.destination);
     source.start();
 
     document.getElementById('audio-status').innerText = isPreview ? '🎧 Önceki tur sesi çalıyor...' : '🔊 Çalıyor...';
 }
 
-function makeImpulseResponse(ctx, duration, decay, reverse) {
-    const sampleRate = ctx.sampleRate;
-    const length = sampleRate * duration;
-    const impulse = ctx.createBuffer(2, length, sampleRate);
-    for(let c = 0; c < 2; c++) {
-        const channel = impulse.getChannelData(c);
-        for(let i = 0; i < length; i++) {
-            const n = reverse ? length - i : i;
-            channel[i] = (Math.random() * 2 - 1) * Math.pow(1 - n / length, decay);
-        }
-    }
-    return impulse;
-}
+
 
 
 
