@@ -815,15 +815,25 @@ async function playAudioWithEffects(base64, level, isPreview) {
     const source = audioContext.createBufferSource();
     source.buffer = decoded;
 
-    // Perde: 200 yerine 360 cent — daha belirgin ince/kalın
-    // tur 1→ +360 (ince), tur 2→ -360 (kalın), tur 3→ +720 (çok ince), tur 4→ -720 (çok kalın)...
-    const direction = (level % 2 === 0) ? 1 : -1;
-    const amount = Math.ceil(level / 2) * 360;
-    source.detune.value = direction * amount;
+    // Perde:
+    // Tek turlar (1,3,5) → İNCE (sincap efekti) — yüksek pozitif detune
+    // Çift turlar (2,4,6) → KALIN (Optimus Prime'dan kalın) — çok negatif detune
+    // Her seviyede belirgin şekilde artar
+    const step = Math.ceil(level / 2);
+    if(level % 2 === 1) {
+        // İnce: tur1→+800, tur3→+1300, tur5→+1800 (sincap bölgesi)
+        source.detune.value = 800 + (step - 1) * 500;
+    } else if(level % 2 === 0 && level > 0) {
+        // Kalın: tur2→-900, tur4→-1400, tur6→-1900 (Optimus Prime'dan da kalın)
+        source.detune.value = -(900 + (step - 1) * 500);
+    } else {
+        source.detune.value = 0; // tur 0 → temiz
+    }
 
-    // Hız: her turda biraz hızlanır veya yavaşlar
-    // level 0→normal, 1→hızlı, 2→yavaş, 3→daha hızlı, 4→daha yavaş...
-    const speedMap = [1, 1.35, 0.70, 1.55, 0.60, 1.70, 0.55];
+    // Hız: zorluk arttıkça hızlandırma büyür (1.4→3x), yavaşlatma azalır (0.8→0.2x)
+    // tek turlar hızlanır, çift turlar yavaşlar
+    // level 0→1, level 1→1.4, level 2→0.8, level 3→1.9, level 4→0.55, level 5→2.5, level 6→0.3, level 7→3.0, level 8→0.2
+    const speedMap = [1, 1.4, 0.8, 1.9, 0.55, 2.5, 0.3, 3.0, 0.2];
     source.playbackRate.value = speedMap[Math.min(level, speedMap.length - 1)];
 
     // Ses seviyesi sabit
