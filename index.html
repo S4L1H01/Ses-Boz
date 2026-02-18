@@ -467,13 +467,7 @@
             <div class="audio-status" id="audio-status">Bekliyor...</div>
         </div>
 
-        <!-- Aktif efektler -->
-        <div class="effect-badges" id="effect-badges">
-            <div class="effect-badge" id="fx-pitch">🎵 Perde</div>
-            <div class="effect-badge" id="fx-speed">⏩ Hız</div>
-            <div class="effect-badge" id="fx-reverb">🌊 Reverb</div>
-            <div class="effect-badge" id="fx-robot">🤖 Robot</div>
-        </div>
+
 
         <!-- Kayıt veya Dinleme alanı -->
         <div class="action-area" id="action-area">
@@ -670,9 +664,9 @@ function startTurnLogic(lastAudio) {
     if(isMyTurn) {
         document.getElementById('my-turn-ui').style.display = 'flex';
         document.getElementById('wait-turn-ui').style.display = 'none';
-        document.getElementById('audio-status').innerText = 'Senin sıran! Kaydet ve gönder.';
+        document.getElementById('audio-status').innerText = 'Senin sıran! Önce dinle, sonra kaydet.';
 
-        // Önceki sesi efektli çal (eğer varsa)
+        // SADECE sıradaki kişi önceki sesi duyar
         if(lastAudio && turnIdx > 0) {
             playAudioWithEffects(lastAudio, effectLevel, true);
         }
@@ -683,12 +677,7 @@ function startTurnLogic(lastAudio) {
         document.getElementById('who-playing').innerHTML = `<span>${current.nick}</span> konuşuyor...`;
         document.getElementById('audio-status').innerText = current.nick + ' kaydediyor...';
         drawIdleWave();
-    }
-
-    // Önceki sesi (host değilse sadece göster, host lastAudio'yu zaten işledi)
-    if(!isMyTurn && lastAudio) {
-        // oyunun bu turundaki sesi otomatik oynat
-        setTimeout(() => playAudioWithEffects(lastAudio, effectLevel, false), 300);
+        // Sıra sende değilse ses ÇALMA - sadece sıradaki kişi duyar
     }
 }
 
@@ -815,7 +804,6 @@ async function playAudioWithEffects(base64, level, isPreview) {
     if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     if(audioContext.state === 'suspended') await audioContext.resume();
 
-    // base64 → arraybuffer
     const resp = await fetch(base64);
     const arrayBuf = await resp.arrayBuffer();
     let decoded;
@@ -824,53 +812,62 @@ async function playAudioWithEffects(base64, level, isPreview) {
 
     drawDecodedWave(decoded);
 
-    // --- Kaynak ---
     const source = audioContext.createBufferSource();
     source.buffer = decoded;
 
-    // Pitch: detune (cent cinsinden) — her seviyede 150 cent kayar
-    const pitchShift = (level % 2 === 0 ? 1 : -1) * level * 150;
+    // Perde: yavaş ve nazik kayma — tur başına sadece 80 cent
+    // level 1→ ince, level 2→ kalın, level 3→ biraz ince... gibi dalgalı ama makul
+    const pitchShift = (level % 2 === 0 ? 1 : -1) * level * 80;
     source.detune.value = pitchShift;
 
-    // Hız: her turda biraz farklı
-    const speedMap = [1, 1.25, 0.8, 1.4, 0.7, 1.6, 0.65];
+    // Hız: çok az değişiyor — daha doğal
+    // level 0→normal, 1→%10 hızlı, 2→%15 yavaş, 3→%20 hızlı, 4→%25 yavaş...
+    const speedMap = [1, 1.10, 0.85, 1.20, 0.80, 1.30, 0.75];
     source.playbackRate.value = speedMap[Math.min(level, speedMap.length-1)];
 
-    let lastNode = source;
+    // Gain: ses seviyesini sabit tut, gürültü olmasın
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 0.9;
+    source.connect(gainNode);
+    let lastNode = gainNode;
 
-    // Reverb
-    if(level >= 3) {
+    // Reverb: sadece level 4'ten sonra, hafif
+    if(level >= 4) {
         const convolver = audioContext.createConvolver();
-        convolver.buffer = makeImpulseResponse(audioContext, 2 + level * 0.5, 2, false);
+        // Kısa ve hafif reverb (1 saniye, düşük decay)
+        convolver.buffer = makeImpulseResponse(audioContext, 1.0, 3, false);
+        const dryGain = audioContext.createGain();
+        const wetGain = audioContext.createGain();
+        dryGain.gain.value = 0.75;
+        wetGain.gain.value = 0.25; // reverb çok baskın olmasın
+        lastNode.connect(dryGain);
         lastNode.connect(convolver);
-        lastNode = convolver;
+        convolver.connect(wetGain);
+        const merger = audioContext.createGain();
+        dryGain.connect(merger);
+        wetGain.connect(merger);
+        lastNode = merger;
     }
 
-    // Robot (ring modulation)
-    if(level >= 4) {
+    // Robot efekti: level 6'dan sonra, hafif ring mod
+    if(level >= 6) {
         const oscillator = audioContext.createOscillator();
-        oscillator.frequency.value = 50 + level * 15;
+        oscillator.frequency.value = 60;
         oscillator.type = 'sine';
         const ringGain = audioContext.createGain();
+        ringGain.gain.value = 0.5;
         oscillator.connect(ringGain);
         lastNode.connect(ringGain);
         oscillator.start();
         lastNode = ringGain;
     }
 
-    // Distortion (level 5+)
-    if(level >= 5) {
-        const waveShaper = audioContext.createWaveShaper();
-        waveShaper.curve = makeDistortionCurve(200 + level * 50);
-        waveShaper.oversample = '4x';
-        lastNode.connect(waveShaper);
-        lastNode = waveShaper;
-    }
+    // Distortion yok — gürültüyü kaldırdık
 
     lastNode.connect(audioContext.destination);
     source.start();
 
-    document.getElementById('audio-status').innerText = isPreview ? '🎧 Önceki tur sesi çalıyor (efektli)...' : '🔊 Çalıyor...';
+    document.getElementById('audio-status').innerText = isPreview ? '🎧 Önceki tur sesi çalıyor...' : '🔊 Çalıyor...';
 }
 
 function makeImpulseResponse(ctx, duration, decay, reverse) {
@@ -887,22 +884,9 @@ function makeImpulseResponse(ctx, duration, decay, reverse) {
     return impulse;
 }
 
-function makeDistortionCurve(amount) {
-    const n = 256, curve = new Float32Array(n);
-    for(let i = 0; i < n; i++) {
-        const x = (i * 2) / n - 1;
-        curve[i] = (Math.PI + amount) * x / (Math.PI + amount * Math.abs(x));
-    }
-    return curve;
-}
 
-function updateEffectBadges() {
-    const l = effectLevel;
-    document.getElementById('fx-pitch').className = 'effect-badge' + (l >= 1 ? ' active' : '');
-    document.getElementById('fx-speed').className = 'effect-badge' + (l >= 2 ? ' active' : '');
-    document.getElementById('fx-reverb').className = 'effect-badge' + (l >= 3 ? ' active' : '');
-    document.getElementById('fx-robot').className = 'effect-badge' + (l >= 4 ? ' active' : '');
-}
+
+function updateEffectBadges() { /* kaldırıldı */ }
 
 // ============================
 //  DALGA ÇİZİMİ
