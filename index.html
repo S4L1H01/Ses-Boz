@@ -379,6 +379,19 @@
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+        /* Partikül */
+        .particle {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 10;
+            animation: particleFade 0.8s ease-out forwards;
+        }
+        @keyframes particleFade {
+            0%   { opacity: 0.9; transform: scale(1) translate(0,0); }
+            100% { opacity: 0;   transform: scale(0) translate(var(--tx), var(--ty)); }
+        }
+
         @media (max-width: 500px) {
             .panel { border-radius: 20px; height: 95vh; }
             .header-title { font-size: 1.1rem; }
@@ -428,17 +441,33 @@
                 <div class="acc-option" onclick="setAcc('hat','🎩')">🎩</div>
                 <div class="acc-option" onclick="setAcc('hat','👑')">👑</div>
                 <div class="acc-option" onclick="setAcc('hat','🎀')">🎀</div>
+                <div class="acc-option" onclick="setAcc('hat','🪖')">🪖</div>
+                <div class="acc-option" onclick="setAcc('hat','🎓')">🎓</div>
+                <div class="acc-option" onclick="setAcc('hat','⛑️')">⛑️</div>
                 <div class="acc-option" onclick="setAcc('hat','')">❌</div>
                 <div class="wardrobe-title">Gözlük</div>
                 <div class="acc-option" onclick="setAcc('gls','🕶️')">🕶️</div>
                 <div class="acc-option" onclick="setAcc('gls','👓')">👓</div>
                 <div class="acc-option" onclick="setAcc('gls','🥽')">🥽</div>
+                <div class="acc-option" onclick="setAcc('gls','🔭')">🔭</div>
                 <div class="acc-option" onclick="setAcc('gls','')">❌</div>
                 <div class="wardrobe-title">Efekt</div>
                 <div class="acc-option" onclick="setAcc('mus','🔥')">🔥</div>
                 <div class="acc-option" onclick="setAcc('mus','✨')">✨</div>
                 <div class="acc-option" onclick="setAcc('mus','〰️')">〰️</div>
+                <div class="acc-option" onclick="setAcc('mus','⚡')">⚡</div>
+                <div class="acc-option" onclick="setAcc('mus','🌀')">🌀</div>
+                <div class="acc-option" onclick="setAcc('mus','💎')">💎</div>
+                <div class="acc-option" onclick="setAcc('mus','🎵')">🎵</div>
+                <div class="acc-option" onclick="setAcc('mus','🌈')">🌈</div>
                 <div class="acc-option" onclick="setAcc('mus','')">❌</div>
+                <div class="wardrobe-title">Renk</div>
+                <div class="acc-option" onclick="setBubbleColor('#FF4757')">🔴</div>
+                <div class="acc-option" onclick="setBubbleColor('#7C3AED')">🟣</div>
+                <div class="acc-option" onclick="setBubbleColor('#2563EB')">🔵</div>
+                <div class="acc-option" onclick="setBubbleColor('#10B981')">🟢</div>
+                <div class="acc-option" onclick="setBubbleColor('#F59E0B')">🟡</div>
+                <div class="acc-option" onclick="setBubbleColor('#EC4899')">🩷</div>
             </div>
         </div>
         <div id="host-settings">
@@ -562,6 +591,13 @@ function handleConn(conn) {
         }
         if(d.type === 'move') { let b = document.getElementById('bub-'+d.id); if(b){ b.style.left=d.x; b.style.top=d.y; }}
         if(d.type === 'acc_update') updateBubbleAcc(d.id, d.acc);
+        if(d.type === 'color_update') {
+            const b = document.getElementById('bub-'+d.id);
+            if(b) {
+                b.style.background = `linear-gradient(135deg, ${d.color}, ${lighten(d.color)})`;
+                b.style.boxShadow = `0 8px 24px ${d.color}66`;
+            }
+        }
 
         if(d.type === 'sync') {
             turnIdx = d.turnIdx; history = d.history; maxTurns = d.maxTurns; players = d.players; effectLevel = d.effectLevel || 0;
@@ -570,22 +606,51 @@ function handleConn(conn) {
             else if(d.state === 'lobby') resetToLobby();
         }
 
-        // Host: ses geldi, işle ve herkese yayınla
-        if(d.type === 'audio_submit' && isHost) {
-            const processed = d.audio; // base64 blob
-            history.push({nick: d.nick, audio: processed, effectLevel: d.effectLevel});
-            turnIdx++;
-            effectLevel = Math.min(turnIdx, 6); // birikimli efekt
-            let state = (turnIdx >= maxTurns) ? 'final' : 'game';
-            broadcast({type:'sync', state, turnIdx, history, players, maxTurns, lastAudio: processed, effectLevel});
-            if(state === 'final') showResults(); else startTurnLogic(processed);
-        }
+        // Not: audio_submit artık chunk sistemiyle yapılıyor (audio_meta + audio_chunk)
 
         if(d.type === 'vote_sync') { votes = d.votes; updateVoteDisplay(); }
         if(d.type === 'typing') {
             const current = players[turnIdx % players.length];
             if(myId !== current.id) {
                 document.getElementById('who-playing').innerHTML = `<span>${d.nick}</span> konuşuyor...`;
+            }
+        }
+
+        // Chunk sistemi
+        if(d.type === 'audio_meta') {
+            if(!window._audioChunks) window._audioChunks = {};
+            window._audioChunks[d.msgId] = { total: d.total, chunks: [], nick: d.nick, effectLevel: d.effectLevel, isSync: d.isSync };
+        }
+        if(d.type === 'audio_chunk') {
+            if(!window._audioChunks) window._audioChunks = {};
+            const meta = window._audioChunks[d.msgId];
+            if(!meta) return;
+            meta.chunks[d.idx] = d.data;
+            const received = meta.chunks.filter(Boolean).length;
+            if(received === meta.total) {
+                const base64 = meta.chunks.join('');
+                delete window._audioChunks[d.msgId];
+                if(meta.isSync) {
+                    // Host'tan gelen sync audio
+                    // history'deki pending'i güncelle
+                    history.forEach(h => { if(h.audio === '__pending__'+d.msgId) h.audio = base64; });
+                    // Sıra bende mi? Çal
+                    const current = players[turnIdx % players.length];
+                    if(current.id === myId) {
+                        playAudioWithEffects(base64, meta.effectLevel || 0, true);
+                    }
+                } else {
+                    // Client'tan host'a gelen ses
+                    if(isHost) {
+                        history.push({nick: meta.nick, audio: base64, effectLevel: meta.effectLevel});
+                        turnIdx++;
+                        effectLevel = Math.min(turnIdx, 8);
+                        let state = (turnIdx >= maxTurns) ? 'final' : 'game';
+                        broadcastAudioSync(state, base64).then(() => {
+                            if(state === 'final') showResults(); else startTurnLogic(base64);
+                        });
+                    }
+                }
             }
         }
     });
@@ -615,8 +680,11 @@ function moveMyBubble(e) {
     const y = cy - rect.top - 25;
     const b = document.getElementById('bub-'+myId);
     if(b) {
+        const oldX = parseFloat(b.style.left) || x;
+        const oldY = parseFloat(b.style.top) || y;
         b.style.left = Math.max(0, Math.min(x, area.offsetWidth - 120)) + 'px';
-        b.style.top = Math.max(0, Math.min(y, area.offsetHeight - 50)) + 'px';
+        b.style.top  = Math.max(0, Math.min(y, area.offsetHeight - 50)) + 'px';
+        spawnParticles(area, oldX + 50, oldY + 25, myBubbleColor);
         broadcast({type:'move', id:myId, x:b.style.left, y:b.style.top});
     }
 }
@@ -628,6 +696,47 @@ function updateBubbleAcc(id, acc) {
         b.querySelector('.gls').innerText = acc.gls || '';
         b.querySelector('.mus').innerText = acc.mus || '';
         let p = players.find(x=>x.id===id); if(p) p.acc = acc;
+    }
+}
+
+let myBubbleColor = '#7C3AED';
+
+function setBubbleColor(color) {
+    myBubbleColor = color;
+    const b = document.getElementById('bub-'+myId);
+    if(b) {
+        b.style.background = `linear-gradient(135deg, ${color}, ${lighten(color)})`;
+        b.style.boxShadow = `0 8px 24px ${color}66`;
+    }
+    broadcast({type:'color_update', id:myId, color});
+}
+
+function lighten(hex) {
+    // hex rengi biraz açar (gradient için)
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, ((n >> 16) & 0xff) + 40);
+    const g = Math.min(255, ((n >> 8)  & 0xff) + 40);
+    const bv= Math.min(255, ( n        & 0xff) + 40);
+    return '#' + [r,g,bv].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+function spawnParticles(area, x, y, color) {
+    const count = 6;
+    for(let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = 4 + Math.random() * 6;
+        const angle = (Math.PI * 2 / count) * i + Math.random() * 0.5;
+        const dist = 20 + Math.random() * 25;
+        p.style.cssText = `
+            width:${size}px; height:${size}px;
+            left:${x - size/2}px; top:${y - size/2}px;
+            background:${color};
+            --tx:${Math.cos(angle)*dist}px;
+            --ty:${Math.sin(angle)*dist}px;
+        `;
+        area.appendChild(p);
+        setTimeout(() => p.remove(), 900);
     }
 }
 
@@ -756,26 +865,60 @@ async function sendAudio() {
 
     if(isRecording) stopRecording();
 
-    // Kısa bekleme (onstop tetiklensin)
-    await new Promise(r => setTimeout(r, 200));
+    // onstop tetiklensin diye bekle
+    await new Promise(r => setTimeout(r, 300));
 
-    if(!myTurnAudioBlob) {
-        // Boş ses gönder
+    if(!myTurnAudioBlob || myTurnAudioBlob.size === 0) {
         myTurnAudioBlob = new Blob([], {type:'audio/webm'});
     }
 
-    // Blob → base64
     const base64 = await blobToBase64(myTurnAudioBlob);
 
     if(isHost) {
         history.push({nick: myNick, audio: base64, effectLevel});
         turnIdx++;
-        effectLevel = Math.min(turnIdx, 6);
+        effectLevel = Math.min(turnIdx, 8);
         let state = (turnIdx >= maxTurns) ? 'final' : 'game';
-        broadcast({type:'sync', state, turnIdx, history, players, maxTurns, lastAudio: base64, effectLevel});
+        // Büyük veriyi chunk'lara bölerek gönder
+        await broadcastAudioSync(state, base64);
         if(state === 'final') showResults(); else startTurnLogic(base64);
     } else {
-        connections[0].send({type:'audio_submit', audio: base64, nick: myNick, effectLevel});
+        // Client: sesi chunk'lara böl
+        await sendAudioChunked(base64);
+    }
+}
+
+// Büyük base64 veriyi parçalara bölerek gönder
+const CHUNK_SIZE = 15000; // 15KB per chunk
+
+async function sendAudioChunked(base64) {
+    const chunks = [];
+    for(let i = 0; i < base64.length; i += CHUNK_SIZE) {
+        chunks.push(base64.slice(i, i + CHUNK_SIZE));
+    }
+    const msgId = Math.random().toString(36).slice(2);
+    // Önce meta gönder
+    connections[0].send({type:'audio_meta', msgId, total: chunks.length, nick: myNick, effectLevel});
+    // Chunk'ları sırayla gönder
+    for(let i = 0; i < chunks.length; i++) {
+        connections[0].send({type:'audio_chunk', msgId, idx: i, data: chunks[i]});
+        await new Promise(r => setTimeout(r, 20)); // küçük gecikme
+    }
+}
+
+async function broadcastAudioSync(state, base64) {
+    // Sync mesajını audio olmadan gönder, sonra audio'yu ayrı chunk'larla
+    const msgId = Math.random().toString(36).slice(2);
+    broadcast({type:'sync', state, turnIdx, history: history.map((h,i) => i < history.length-1 ? h : {...h, audio: '__pending__'+msgId}), players, maxTurns, lastAudioId: msgId, effectLevel});
+    // Audio'yu chunk'lara böl
+    const chunks = [];
+    for(let i = 0; i < base64.length; i += CHUNK_SIZE) {
+        chunks.push(base64.slice(i, i + CHUNK_SIZE));
+    }
+    broadcast({type:'audio_meta', msgId, total: chunks.length, nick: myNick, effectLevel, isSync: true});
+    for(let i = 0; i < chunks.length; i++) {
+        broadcast({type:'audio_chunk', msgId, idx: i, data: chunks[i]});
+        await new Promise(r => setTimeout(r, 20));
     }
 }
 
@@ -961,8 +1104,38 @@ function updateVoteDisplay() {
 
 function playHistoryAudio(idx) {
     const h = history[idx];
-    if(h && h.audio) playAudioWithEffects(h.audio, h.effectLevel || 0, false);
-    else toast('Bu oyuncu ses göndermedi 🤫');
+    if(!h || !h.audio || h.audio.length < 100) { toast('Bu oyuncu ses göndermedi 🤫'); return; }
+    playRawAudio(h.audio);
+}
+
+// Final ekranında ham sesi efektsiz çalar (sadece ses dosyasını çalar)
+async function playRawAudio(base64) {
+    try {
+        if(!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if(audioContext.state === 'suspended') await audioContext.resume();
+        const resp = await fetch(base64);
+        const arrayBuf = await resp.arrayBuffer();
+        let decoded;
+        try { decoded = await audioContext.decodeAudioData(arrayBuf); }
+        catch(e) {
+            // decodeAudioData başarısız olursa HTML Audio ile çal
+            const audio = new Audio(base64);
+            audio.play().catch(() => toast('Ses çalınamadı ❌'));
+            return;
+        }
+        const source = audioContext.createBufferSource();
+        source.buffer = decoded;
+        const gain = audioContext.createGain();
+        gain.gain.value = 1.0;
+        source.connect(gain);
+        gain.connect(audioContext.destination);
+        source.start();
+        toast('▶ Çalıyor...');
+    } catch(e) {
+        // Son çare: HTML Audio
+        try { const audio = new Audio(base64); audio.play(); }
+        catch(e2) { toast('Ses çalınamadı ❌'); }
+    }
 }
 
 function castVote(idx) {
