@@ -815,14 +815,16 @@ async function playAudioWithEffects(base64, level, isPreview) {
     const source = audioContext.createBufferSource();
     source.buffer = decoded;
 
-    // SADECE perde: tur 1→ ince (+200 cent), tur 2→ kalın (-200 cent), tur 3→ daha ince (+400)...
-    // Her geçişte 200 cent artarak ince↔kalın arasında gidip gelir
+    // Perde: 200 yerine 360 cent — daha belirgin ince/kalın
+    // tur 1→ +360 (ince), tur 2→ -360 (kalın), tur 3→ +720 (çok ince), tur 4→ -720 (çok kalın)...
     const direction = (level % 2 === 0) ? 1 : -1;
-    const amount = Math.ceil(level / 2) * 200; // 0, 200, 200, 400, 400, 600...
+    const amount = Math.ceil(level / 2) * 360;
     source.detune.value = direction * amount;
 
-    // Hız DEĞİŞMİYOR — sadece perde
-    source.playbackRate.value = 1;
+    // Hız: her turda biraz hızlanır veya yavaşlar
+    // level 0→normal, 1→hızlı, 2→yavaş, 3→daha hızlı, 4→daha yavaş...
+    const speedMap = [1, 1.35, 0.70, 1.55, 0.60, 1.70, 0.55];
+    source.playbackRate.value = speedMap[Math.min(level, speedMap.length - 1)];
 
     // Ses seviyesi sabit
     const gainNode = audioContext.createGain();
